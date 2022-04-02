@@ -1,0 +1,227 @@
+---
+title: "VECM最終"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+library(vars) 
+
+library(urca)
+library(ggplot2)
+
+library(tsDyn)
+
+library(Hmisc)#表をつくる
+```
+
+```{r}
+#ディレクトリの指定
+setwd("C:/Users/ai190/OneDrive/デスクトップ/大学/卒研/死亡率データ/WHOmortalitydb/After/")
+getwd() 
+
+#死亡率データの読み込み
+MortRate_JP_male = read.csv("CoD_Male_JP.csv", header= T, sep=",",fileEncoding = "UTF-8-BOM")
+```
+
+```{r}
+#プロット
+ts.plot(MortRate_JP_male[,c("IandP","Cancer","Circulatory","Respiratory","External")],col=c("blue","red","orange","black","green"))
+```
+
+```{r}
+log_Mort_male = log(MortRate_JP_male[,c("IandP","Cancer","Circulatory","Respiratory","External")])
+log_Mort
+ts.plot(log_Mort_male[,c("IandP","Cancer","Circulatory","Respiratory","External")],col=c("blue","red","orange","black","green"))
+```
+
+```{r}
+#Johansen検定を行う
+ctestile_male = ca.jo(log_Mort_male, type = "trace", ecdet = "none", K = 2, spec = "transitory")
+summary(ctestile_male)
+```
+
+```{r}
+# Estimate
+est_tsdyn_male <- VECM(log_Mort_male, lag = 2, r = 2, include = "none", estim = "ML")
+
+##export to Latex
+toLatex(est_tsdyn_male)
+toLatex(summary(est_tsdyn))
+options("show.signif.stars"=FALSE)
+```
+
+
+## tsdyn
+
+```{r}
+est_tsdyn <- VECM(log_Mort, lag = 2, r = 2, include = "both", estim = "ML")
+summary(est_tsdyn)
+
+
+```
+
+```{r}
+var_tsdyn = VARrep(est_tsdyn)
+#summary(var_tsdyn)
+
+#resid(var_tsdyn)
+```
+
+```{r}
+
+log_pred_cod = predict(est_tsdyn_notr, n.ahead = 20)
+log_pred_cod
+#pred_cod = exp(log_pred_cod)
+#pred_cod
+ts.plot(log_pred_cod[,c("IandP","Cancer","Circulatory","Respiratory","External")],col=c("blue","red","orange","black","green"))
+```
+
+```{r}
+vec2var_cod_male <- vec2var(ctestile_male, r = 2)
+
+#vec2var_cod$A
+print(vec2var_cod_male)
+resid_m = vec2var_cod_male$resid
+
+sigma_resid_m = cov(resid_m, y = resid_m)
+
+sigma_resid_m
+rooted_sigma_resid_m = sqrt(sigma_resid_m)
+rooted_sigma_resid_m
+```
+
+```{r}
+
+#分散共分散行列
+sigma.u <- crossprod(resid(vec2var_cod))
+rooted_sigma.u = sqrt(sigma.u)
+rooted_sigma.u
+```
+
+```{r}
+normality.test(vec2var_cod)
+```
+
+```{r}
+Varpred_male <- predict(vec2var_cod_male, n.ahead = 10)
+par(new=TRUE)
+plot(Varpred_male)
+#pred_vec2var_exp = exp(vec2var_cod )
+setwd("C:/Users/ai190/OneDrive/デスクトップ/大学/卒研/卒論/Graphs")
+png("prediction_male.png", width = 800, height = 600)
+plot(Varpred_male)
+#lines(x,fitted(ans),col=”red”)
+dev.off()
+```
+
+```{r}
+irfIandP = irf(vec2var_cod, impulse = "IandP", n.ahead = N_ahead,
+ortho = TRUE, cumulative = FALSE, boot = TRUE, ci = 0.95,
+runs = 100, seed = NULL, )
+#sigma.u[1,]
+irfIandP_scaled = irfIandP$irf$IandP / rooted_sigma_resid[1,1]
+irfIandP_scaled.df = as.data.frame(irfIandP_scaled) 
+ts.plot(irfIandP_scaled,col=c("blue","red","orange","black","green"))
+legend("topright", ,c("IandP","Cancer","Circulatory","Respiratory","External"),col=c("blue","red","orange","black","green"), lty = 1)
+#legend("topleft", legend = labels, col = cols, pch = pchs, lty = ltys)
+#plot(irfV1toV2, ylim=c(-0.2,0.2))
+```
+
+```{r}
+Mat_irf = matrix(0, nrow=5, ncol=5) 
+Mat_irf[1,] = abs(irfIandP_scaled[20,] )
+Mat_irf
+```
+
+```{r}
+irfCancer = irf(vec2var_cod, impulse = "Cancer", n.ahead = N_ahead,
+ortho = TRUE, cumulative = FALSE, boot = TRUE, ci = 0.95,
+runs = 100, seed = NULL, )
+irfCancer_scaled = irfCancer$irf$Cancer / rooted_sigma_resid[2,2]
+
+irfCancer_scaled[20,]
+Mat_irf[2,] = abs(irfCancer_scaled[20,])
+```
+
+```{r}
+Mat_irf
+```
+
+```{r}
+irfCirculatory = irf(vec2var_cod, impulse = "Circulatory", n.ahead = N_ahead,
+ortho = TRUE, cumulative = FALSE, boot = TRUE, ci = 0.95,
+runs = 100, seed = NULL, )
+out_irf_Circulatory = irfCirculatory$irf$Circulatory[20,] /  rooted_sigma_resid[3,3]
+Mat_irf[3,] = abs(out_irf_Circulatory)
+```
+
+```{r}
+irfRespiratory = irf(vec2var_cod, impulse = "Respiratory", n.ahead = N_ahead,
+ortho = TRUE, cumulative = FALSE, boot = TRUE, ci = 0.95,
+runs = 100, seed = NULL, )
+out_irf_Respiratory = irfRespiratory$irf$Respiratory[20,] / rooted_sigma_resid[4,4]
+Mat_irf[4,] = abs(out_irf_Respiratory)
+```
+
+```{r}
+irfExternal= irf(vec2var_cod, impulse = "External", n.ahead = N_ahead,
+ortho = TRUE, cumulative = FALSE, boot = TRUE, ci = 0.95,
+runs = 100, seed = NULL, )
+out_irf_External= irfExternal$irf$External[20,] /  rooted_sigma_resid[5,5]
+Mat_irf[5,] = abs(out_irf_External)
+
+round(Mat_irf,3)
+```
+
+```{r}
+#export
+df_irf = data.frame(round(Mat_irf,3))
+
+latex(
+  df_irf,                   # 配列型のデータ
+  file="",              # LaTeX ファイルの保存先
+  title="Model",        # 1行1列目のセルの内容
+  label="table1",       # LaTeX の \label に相当
+  caption="table1の結果" # LaTeX の \caption に相当
+)
+
+write.table(df_irf, "C:/Users/ai190/OneDrive/デスクトップ/大学/卒研/卒論/tables/irf_jp_male.csv", col.names=FALSE)
+
+```
+
+```{r}
+fevd_cod = fevd(vec2var_cod, n.ahead = 20)
+plot(fevd_cod)
+
+setwd("C:/Users/ai190/OneDrive/デスクトップ/大学/卒研/卒論/Graphs")
+png("fevd_jp_male.png", width = 800, height = 600)
+plot(fevd_cod)
+#lines(x,fitted(ans),col=”red”)
+dev.off()
+```
+
+)
